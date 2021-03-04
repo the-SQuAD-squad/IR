@@ -6,24 +6,12 @@ import random
 import string
 import pickle
 import numpy as np
-import pandas as pd
-import tensorflow as tf
 
 def init():
-    pd.set_option('display.max_colwidth', -1)
-
-    # fix random seeds
     seed_value = 42 #@param {type:"integer"}
-
     os.environ['PYTHONHASHSEED']=str(seed_value)
     random.seed(seed_value)
     np.random.seed(seed_value)
-
-    tf.compat.v1.set_random_seed(seed_value)
-
-    session_conf = tf.compat.v1.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
-    sess = tf.compat.v1.Session(graph=tf.compat.v1.get_default_graph(), config=session_conf)
-    tf.compat.v1.keras.backend.set_session(sess)
 
     os.system("gcloud config set project feisty-mechanic-221914")
 
@@ -129,17 +117,77 @@ def tokenize_question_qa(question, tokenizer):
     tokenized_question = tokenizer(preprocessed_question, return_offsets_mapping=True).input_ids
     return tokenized_question
 
+def mask_and_pad(tokenizer, tokenized_passages, tokenized_question, max_seq_length):
+    instances=[]
+    for tokenized_passage in tokenized_passages:
+        input_ids = tokenized_passage + tokenized_question[1:]
+        token_type_ids = [0] * len(tokenized_passage) + [1] * len(tokenized_question[1:])
+        attention_mask = [1] * len(input_ids)
+        padding_length = max_seq_length - len(input_ids)
+        if padding_length > 0:
+            input_ids = input_ids + ([0] * padding_length)
+            attention_mask = attention_mask + ([0] * padding_length)
+            token_type_ids = token_type_ids + ([0] * padding_length)
+        instances.append({
+            "input_word_ids": input_ids,
+            "input_type_ids": token_type_ids,
+            "input_mask": attention_mask
+        })
 
-class ZeroCenterer(object):
+    return instances
+
+import googleapiclient.discovery
+from google.api_core.client_options import ClientOptions
+
+# env: GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_file>
+def discovery_service(project, region, model, version):
+    prefix = "{}-ml".format(region) if region else "ml"
+    api_endpoint = "https://{}.googleapis.com".format(prefix)
+    client_options = ClientOptions(api_endpoint=api_endpoint)
+    service = googleapiclient.discovery.build(
+        'ml', 'v1', client_options=client_options, static_discovery=False)
+    name = 'projects/{}/models/{}/versions/{}'.format(project, model,version)
+    return service, name
+
+def sample_predictions(predictions, tokenizer, tokenized_passage):
+    candidate_ans = []
+    confidence = []
+    for i,p in enumerate(predictions):
+        current_passage = tokenized_passage[i]
+        softmax_start = np.array(p['softmax_start'])
+        softmax_end = np.array(p['softmax_end'])
+        start_idx = np.argmax(softmax_start)
+        start_prob = np.max(softmax_start)
+        end_idx = np.argmax(softmax_end)
+        end_prob = np.max(softmax_end)
+
+        if start_idx > end_idx:
+            continue
+        else:
+            prob_sum = start_prob + end_prob
+            predicted_ans = tokenizer.decode(current_passage[start_idx : end_idx+1])
+            if predicted_ans != '':
+                candidate_ans.append(predicted_ans)
+                confidence.append(prob_sum)
+
+    print("[Debug] Probabilities:", *zip(confidence, candidate_ans), sep='\n')
+    answer = candidate_ans[np.argmax(confidence)]
+    return answer
+
+class Preprocessor(object):
 
     def __init__(self):
         init()
         print("[Debug] Initialized\n\n")
+
+        self.qa_mdl_service, self.selfservice_name = discovery_service("feisty-mechanic-221914", "us-central1", "cruiseNet", "v1")
+        print("[Debug] QA model service found\n\n")
+
         self.pretrained_model_str = "roberta-base"
         self.max_seq_length = 512
         self.vectorizer = load_tfidf_squad_v1()
         self.tokenizer = AutoTokenizer.from_pretrained(self.pretrained_model_str)
-        print("[Debug] Model loaded\n\n")
+        print("[Debug] IR model loaded\n\n")
 
         self.pages_dict = fetch_category()
         self.pages_titles = self.pages_dict.keys()
@@ -152,12 +200,27 @@ class ZeroCenterer(object):
         print("[Debug] Pages preprocessed\n\n")
 
 
-    def preprocess(self, question):
-        print(question)
+    def process(self, question):
         question_vectorized = self.vectorizer.transform([question])
         question_tokenized = tokenize_question_qa(question, self.tokenizer)
-        print("[Debug] Question encoded\n\n")
-
         best_title = get_best_title(self.pages_vectorized, self.pages_titles, question_vectorized)
+        print("[Debug] IR model selected page: {}\n\n".format(best_title))
         proposal_passages = self.passages_dict[best_title]
-        return proposal_passages
+        instances = mask_and_pad(self.tokenizer, proposal_passages, question_tokenized, self.max_seq_length)
+        print("[Debug] Input ready, querying QA model ...\n\n")
+
+        response = self.qa_mdl_service.projects().predict(name=self.selfservice_name, body={'instances': instances}).execute()
+        print("[Debug] QA model response\n\n")
+
+        if 'error' in response:
+            raise RuntimeError(response['error'])
+
+        answer = sample_predictions(response['predictions'], self.tokenizer, proposal_passages)
+
+        return answer
+
+preprocessor = Preprocessor()
+
+answer = preprocessor.process("What aircraft drives Maverick?")
+
+print("Answer: ", answer, "\n\n")
