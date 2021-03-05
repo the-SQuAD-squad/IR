@@ -2,20 +2,25 @@
 <html>
     <head>
         <meta charset="utf-8">
-        <title>WebSocket demo</title>
+        <link href="/favicon.ico" type="image/x-icon" rel="icon" />
+        <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+        <title>CruiseNet</title>
     </head>
-    <body>
-        <script>
-            var ws = new WebSocket("ws://35.225.9.87:443/"),
-                messages = document.createElement('ul');
-            ws.onmessage = function (event) {
-                var messages = document.getElementsByTagName('ul')[0],
-                    message = document.createElement('li'),
-                    content = document.createTextNode(event.data);
-                message.appendChild(content);
-                messages.appendChild(message);
-            };
-            document.body.appendChild(messages);
-        </script>
+    <body style="background-image: url('bg.jpg');">
+        <input id="question" type="text"/>
+        <button id="submit">ASK</button>
     </body>
+    <script>
+        document.getElementById("submit").onclick = () => {
+            fetch("https://cruisenet.info/api", {
+                method: 'POST',
+                mode: 'cors',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(document.getElementById("question").value)
+            }).then(async (response) => {
+                const txt = await response.text()
+                alert(txt)
+            })
+        }
+    </script>
 </html>
