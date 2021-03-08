@@ -1,15 +1,38 @@
 <!DOCTYPE html>
 <html>
+
     <head>
         <meta charset="utf-8">
-        <link href="/favicon.ico" type="image/x-icon" rel="icon" />
         <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
         <title>CruiseNet</title>
+        <link href="favicon.ico" type="image/x-icon" rel="icon" />
+        <link rel="stylesheet" href="style.css">
     </head>
-    <body style="background-image: url('bg.jpg');">
-        <input id="question" type="text"/>
-        <button id="submit">ASK</button>
+
+    <body>
+        <h1><u>CruiseNet 1.0</u></h1>
+        <div id="container">
+            You can do any query about any film HE partecipated.
+            <h2>Ask to Tom:</h2>
+            <input id="question" type="text" maxlength="80"/><br/>
+            <button id="submit">ASK</button>
+            <div id="loader"></div>
+            <h2>Tom answers:</h2>
+            <div id="answer"></div>
+            <svg id="sattention" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1000 1000" >
+                <path id="attention" d="m571,767l0,-106q0,-8,-5,-13t-12,-5l-108,0q-7,0,-12,5t-5,13l0,106q0,8,5,13t12,6l108,0q7,0,12,-6t5,-13Zm-1,-208l10,-257q0,-6,-5,-10q-7,-6,-14,-6l-122,0q-7,0,-14,6q-5,4,-5,12l9,255q0,5,6,9t13,3l103,0q8,0,13,-3t6,-9Zm-7,-522l428,786q20,35,-1,70q-10,17,-26,26t-35,10l-858,0q-18,0,-35,-10t-26,-26q-21,-35,-1,-70l429,-786q9,-17,26,-27t36,-10t36,10t27,27Z" />
+            </svg>
+        </div>
+        <footer>
+            <div id="fc">
+                Natural Language Processing Project (2020/2021) <br/>
+                Marco Buiani, Francesco Rambaldi, Luca Serfilippi, Daniele Verì<br/>
+                Made with ♥ @ UNIBO
+            </div>
+
+        </footer>
     </body>
+
     <script>
         document.getElementById("submit").onclick = () => {
             fetch("https://cruisenet.info/api/", {
@@ -19,8 +42,19 @@
                 body: JSON.stringify(document.getElementById("question").value)
             }).then(async (response) => {
                 const txt = await response.text()
-                alert(txt)
+                document.getElementById("answer").innerHTML = txt
+                document.getElementById("submit").disabled = false
+                document.getElementById("loader").style.opacity = "0"
+            }).catch(async (error) => {
+                document.getElementById("sattention").style.opacity = "1"
+                document.getElementById("answer").innerHTML = error
+                document.getElementById("submit").disabled = false
+                document.getElementById("loader").style.opacity = "0"
             })
+            document.getElementById("sattention").style.opacity = "0"
+            document.getElementById("submit").disabled = true
+            document.getElementById("loader").style.opacity = "1"
         }
     </script>
+
 </html>

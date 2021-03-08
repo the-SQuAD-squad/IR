@@ -5,13 +5,13 @@ import math
 import random
 import string
 import pickle
+import logging
+logging.basicConfig(filename='/var/log/query_preprocessor/logs.txt', filemode='a', level=logging.INFO)
 import numpy as np
 
 import socket
 import googleapiclient.discovery
 from google.api_core.client_options import ClientOptions
-
-import wikipediaapi
 
 from sklearn.neighbors import NearestNeighbors
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -19,7 +19,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import nltk
 import nltk.data
 from transformers import AutoTokenizer
-
 
 def init():
     seed_value = 42 #@param {type:"integer"}
@@ -30,30 +29,9 @@ def init():
     os.system("gcloud config set project feisty-mechanic-221914")
     nltk.download('punkt')
 
-def fetch_category(category="Tom Cruise filmography"):
-    # Get all links in a wiki page
-    wiki_wiki = wikipediaapi.Wikipedia('en')
-    page_py = wiki_wiki.page(category)
-    def get_links(page):
-        links = page.links
-        for title in sorted(links.keys()):
-            if links[title].ns != 0 or "Unauthorized" in title:
-                links.pop(title)
-        return links
-
-    links = get_links(page_py)
-
-    pages_text = {}
-    for title in links:
-        page_py = links[title]
-        pages_text[title] = page_py.text
-
-    pages_text
-
-    for title in pages_text:
-        stop_index = pages_text[title].rfind("References")
-        pages_text[title] = pages_text[title][:stop_index]
-
+def load_pages():
+    with open('/home/daniele.veri.96/pages.pkl', 'rb') as handle:
+        pages_text = pickle.load(handle)
     return pages_text
 
 def preprocess_ir(text):
@@ -67,12 +45,6 @@ def preprocess_ir(text):
     text = [re.sub(r"(\d+)([a-z]+)", r'\1 \2', line) for line in text]
     text = [re.sub('\s{2,}', ' ', line.strip()) for line in text]   # replacing more than one consecutive blank spaces with only one of them
     return text
-
-def load_tfidf_squad_v1():
-    os.system("gsutil cp gs://squad_squad/tfidf_squadv1.pkl ./tfidf_squadv1.pkl")
-    with open('/home/daniele.veri.96/tfidf_squadv1.pkl', 'rb') as f:
-        vectorizer = pickle.load(f)
-    return vectorizer
 
 def get_best_title(pages_vectorized, titles, question_vectorized):
     k=1
@@ -137,7 +109,6 @@ def mask_and_pad(tokenizer, tokenized_passages, tokenized_question, max_seq_leng
 
     return instances
 
-
 # env: GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_file>
 def discovery_service(project, region, model, version):
     socket.setdefaulttimeout(300)
@@ -166,54 +137,54 @@ def sample_predictions(predictions, tokenizer, tokenized_passage):
         else:
             prob_sum = start_prob + end_prob
             predicted_ans = tokenizer.decode(current_passage[start_idx : end_idx+1])
-            if predicted_ans != '':
+            if predicted_ans != '' and predicted_ans != "<s>":
                 candidate_ans.append(predicted_ans)
                 confidence.append(prob_sum)
-
-    print("[Debug] Probabilities:", *zip(confidence, candidate_ans), sep='\n')
+    if confidence == []:
+        return "No answer"
+    logging.info("Probabilities: {}".format(*zip(confidence, candidate_ans)))
     answer = candidate_ans[np.argmax(confidence)]
     return answer
 
 class Preprocessor(object):
     def __init__(self):
         init()
-        print("[Debug] Initialized\n\n")
-
-        self.qa_mdl_service, self.selfservice_name = discovery_service("feisty-mechanic-221914", "us-central1", "cruiseNet", "v1")
-        print("[Debug] QA model service found\n\n")
-
         self.pretrained_model_str = "roberta-base"
         self.max_seq_length = 512
-        self.vectorizer = load_tfidf_squad_v1()
+        self.vectorizer = TfidfVectorizer()
         self.tokenizer = AutoTokenizer.from_pretrained(self.pretrained_model_str)
-        print("[Debug] IR model loaded\n\n")
+        logging.info("Initialized\n\n")
 
-        self.pages_dict = fetch_category()
+        self.pages_dict = load_pages()
         self.pages_titles = self.pages_dict.keys()
         self.pages_text = self.pages_dict.values()
-        print("[Debug] Wikipedia resources fetched\n\n")
+        logging.info("Wikipedia resources fetched\n\n")
+
+        self.qa_mdl_service, self.selfservice_name = discovery_service("feisty-mechanic-221914", "us-central1", "cruiseNet", "v1")
+        logging.info("QA model service found\n\n")
 
         self.pages_text_preprocessed = preprocess_ir(self.pages_text)
-        self.pages_vectorized = self.vectorizer.transform(self.pages_text_preprocessed)
+        self.pages_vectorized = self.vectorizer.fit_transform(self.pages_text_preprocessed)
         self.passages_dict = preprocess_and_split_qa(self.tokenizer, self.pages_dict, self.max_seq_length)
-        print("[Debug] Pages preprocessed\n\n")
+        logging.info("Pages preprocessed\n\n")
 
     def process(self, question):
-        question_vectorized = self.vectorizer.transform([question])
-        question_tokenized = tokenize_question_qa(question, self.tokenizer)
-        best_title = get_best_title(self.pages_vectorized, self.pages_titles, question_vectorized)
-        print("[Debug] IR model selected page: {}\n\n".format(best_title))
-        proposal_passages = self.passages_dict[best_title]
-        instances = mask_and_pad(self.tokenizer, proposal_passages, question_tokenized, self.max_seq_length)
-        print("[Debug] Input ready, querying QA model ...\n\n")
-
         try:
-            response = self.qa_mdl_service.projects().predict(name=self.selfservice_name, body={'instances': instances}).execute(num_retries=3)  ### keep num_retries?
-            print("[Debug] QA model response\n\n")
+            logging.info("Received question: {}".format(question))
+            question_vectorized = self.vectorizer.transform([question])
+            question_tokenized = tokenize_question_qa(question, self.tokenizer)
+            best_title = get_best_title(self.pages_vectorized, self.pages_titles, question_vectorized)
+            logging.info("IR model selected page: {}\n\n".format(best_title))
+            proposal_passages = self.passages_dict[best_title]
+            instances = mask_and_pad(self.tokenizer, proposal_passages, question_tokenized, self.max_seq_length)
+            logging.info("Input ready, querying QA model ...\n\n")
+            response = self.qa_mdl_service.projects().predict(name=self.selfservice_name, body={'instances': instances}).execute()  ### num_retries=3 ?
+            logging.info("QA model response\n\n")
             if 'error' in response:
                 raise Exception(response['error'])
             answer = sample_predictions(response['predictions'], self.tokenizer, proposal_passages)
             return answer
         except Exception as e:
-            print("[Error]", e)
-            return str(e)
+            logging.exception(e)
+            print(e)
+            return "Unexpected error. Retry."
