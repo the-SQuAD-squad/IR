@@ -5,8 +5,21 @@ import math
 import random
 import string
 import pickle
-import nltk
 import numpy as np
+
+import socket
+import googleapiclient.discovery
+from google.api_core.client_options import ClientOptions
+
+import wikipediaapi
+
+from sklearn.neighbors import NearestNeighbors
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+import nltk
+import nltk.data
+from transformers import AutoTokenizer
+
 
 def init():
     seed_value = 42 #@param {type:"integer"}
@@ -16,8 +29,6 @@ def init():
 
     os.system("gcloud config set project feisty-mechanic-221914")
     nltk.download('punkt')
-
-import wikipediaapi
 
 def fetch_category(category="Tom Cruise filmography"):
     # Get all links in a wiki page
@@ -45,7 +56,6 @@ def fetch_category(category="Tom Cruise filmography"):
 
     return pages_text
 
-
 def preprocess_ir(text):
     REPLACE_WITH_SPACE = re.compile(r"\n")
     text = [REPLACE_WITH_SPACE.sub(" ", line) for line in text]
@@ -58,16 +68,11 @@ def preprocess_ir(text):
     text = [re.sub('\s{2,}', ' ', line.strip()) for line in text]   # replacing more than one consecutive blank spaces with only one of them
     return text
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-
 def load_tfidf_squad_v1():
     os.system("gsutil cp gs://squad_squad/tfidf_squadv1.pkl ./tfidf_squadv1.pkl")
     with open('/home/daniele.veri.96/tfidf_squadv1.pkl', 'rb') as f:
         vectorizer = pickle.load(f)
     return vectorizer
-
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.neighbors import NearestNeighbors
 
 def get_best_title(pages_vectorized, titles, question_vectorized):
     k=1
@@ -79,9 +84,6 @@ def get_best_title(pages_vectorized, titles, question_vectorized):
     titles = np.array(list(titles))
     title = titles[results[0]][0]
     return title
-
-import nltk.data
-from transformers import AutoTokenizer
 
 def preprocess_and_split_qa(tokenizer, pages_dict, max_seq_length):
     passages_dict = {}
@@ -135,13 +137,10 @@ def mask_and_pad(tokenizer, tokenized_passages, tokenized_question, max_seq_leng
 
     return instances
 
-import googleapiclient.discovery
-from google.api_core.client_options import ClientOptions
-import socket
 
 # env: GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_file>
 def discovery_service(project, region, model, version):
-    socket.setdefaulttimeout(150)
+    socket.setdefaulttimeout(300)
     prefix = "{}-ml".format(region) if region else "ml"
     api_endpoint = "https://{}.googleapis.com".format(prefix)
     client_options = ClientOptions(api_endpoint=api_endpoint)
@@ -199,7 +198,6 @@ class Preprocessor(object):
         self.passages_dict = preprocess_and_split_qa(self.tokenizer, self.pages_dict, self.max_seq_length)
         print("[Debug] Pages preprocessed\n\n")
 
-
     def process(self, question):
         question_vectorized = self.vectorizer.transform([question])
         question_tokenized = tokenize_question_qa(question, self.tokenizer)
@@ -209,12 +207,13 @@ class Preprocessor(object):
         instances = mask_and_pad(self.tokenizer, proposal_passages, question_tokenized, self.max_seq_length)
         print("[Debug] Input ready, querying QA model ...\n\n")
 
-        response = self.qa_mdl_service.projects().predict(name=self.selfservice_name, body={'instances': instances}).execute()
-        print("[Debug] QA model response\n\n")
-
-        if 'error' in response:
-            raise RuntimeError(response['error'])
-
-        answer = sample_predictions(response['predictions'], self.tokenizer, proposal_passages)
-
-        return answer
+        try:
+            response = self.qa_mdl_service.projects().predict(name=self.selfservice_name, body={'instances': instances}).execute(num_retries=3)  ### keep num_retries?
+            print("[Debug] QA model response\n\n")
+            if 'error' in response:
+                raise Exception(response['error'])
+            answer = sample_predictions(response['predictions'], self.tokenizer, proposal_passages)
+            return answer
+        except Exception as e:
+            print("[Error]", e)
+            return str(e)
