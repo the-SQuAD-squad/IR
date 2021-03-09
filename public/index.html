@@ -12,9 +12,18 @@
     <body>
         <h1><u>CruiseNet 1.0</u></h1>
         <div id="container">
-            You can do any query about any film HE partecipated.
+            You can do any query about any film HE partecipated in.
             <h2>Ask to Tom:</h2>
-            <input id="question" type="text" maxlength="80"/><br/>
+            <input id="question" type="text" maxlength="80" list="examples"/>
+            <datalist id="examples">
+                <option value="What aircraft does Cruise pilot in Top Gun?">What aircraft does Cruise pilot in Top Gun?</option>
+                <option value="Who directed the last samurai?">Who directed the last samurai?</option>
+                <option value="What is the role of Tom Cruise in Mission Impossible?">What is the role of Tom Cruise in Mission Impossible?</option>
+                <option value="What is Mission Impossible?">What is Mission Impossible?</option>
+                <option value="In what does Tom Cruise believe?">In what does Tom Cruise believe?</option>
+                <option value="Who is the villain in Mission Impossible III?">Who is the villain in Mission Impossible III?</option>
+                <option value="who was the first tom cruise's wife?">Who was the first tom cruise's wife?</option>
+            </datalist><br/>
             <button id="submit">ASK</button>
             <div id="loader"></div>
             <h2>Tom answers:</h2>
@@ -54,6 +63,9 @@
             document.getElementById("sattention").style.opacity = "0"
             document.getElementById("submit").disabled = true
             document.getElementById("loader").style.opacity = "1"
+        }
+        document.getElementById("question").onclick = () => {
+            document.getElementById("examples").classList.toggle("show");
         }
     </script>
 
