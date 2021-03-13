@@ -1,0 +1,10 @@
+#!/bin/bash
+# schedule this script @reboot
+sleep 5;
+curl 'cruisenet.info/api/' -H 'Accept: */*' --compressed  -H 'Content-Type: application/json' -H 'Origin: https://cruisenet.info'  --data-raw '"who is Nicole Kidman to Tom Cruise?"' &
+curl 'cruisenet.info/api/' -H 'Accept: */*' --compressed  -H 'Content-Type: application/json' -H 'Origin: https://cruisenet.info'  --data-raw '"who is Nicole Kidman to Tom Cruise?"' &
+curl 'cruisenet.info/api/' -H 'Accept: */*' --compressed  -H 'Content-Type: application/json' -H 'Origin: https://cruisenet.info'  --data-raw '"who is Nicole Kidman to Tom Cruise?"' &
+curl 'cruisenet.info/api/' -H 'Accept: */*' --compressed  -H 'Content-Type: application/json' -H 'Origin: https://cruisenet.info'  --data-raw '"who is Nicole Kidman to Tom Cruise?"' &
+curl 'cruisenet.info/api/' -H 'Accept: */*' --compressed  -H 'Content-Type: application/json' -H 'Origin: https://cruisenet.info'  --data-raw '"who is Nicole Kidman to Tom Cruise?"'
+
+while true; do nc -lp 8080; done &
