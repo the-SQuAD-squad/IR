@@ -1,5 +1,6 @@
 # Information retrieval 
-
+## Experiments
+https://wandb.ai/veri/IR?workspace=user-veri
 ## Branches
 - `main`: merged from the `tfidf` branch
 - `tfidf`: tf-idf performances on SQuAD v1.1
