@@ -1,4 +1,5 @@
-# Information retrieval on SQuAD v1.1 and IR + QA system on Wikipedia articles
+# Information retrieval on SQuAD v1.1 
+# IR + QA system on Wikipedia articles
 ## Experiments
 https://wandb.ai/veri/IR
 ## Branches
