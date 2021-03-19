@@ -1,6 +1,6 @@
 # Information retrieval on SQuAD v1.1 
 # IR + QA system on Wikipedia articles
-## Experiments
+## Experiment plots
 https://wandb.ai/veri/IR/reports/IR--Vmlldzo1Mzk3MDc
 ## Branches
 - `main`: merged from the `tfidf` branch
